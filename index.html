@@ -1,0 +1,153 @@
+<!-- templates/index.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Refurbished Phones Inventory</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; background: #f5f7fb; }
+    header { display:flex; justify-content:space-between; align-items:center; }
+    .card { background:white; padding:16px; border-radius:8px; box-shadow: 0 4px 12px rgba(0,0,0,0.06); margin-top:16px; }
+    input, select { padding:8px; margin:6px; }
+    button { padding:8px 12px; margin:6px; cursor:pointer; }
+    table { border-collapse: collapse; width:100%; }
+    th, td { border: 1px solid #eee; padding:8px; text-align:left; }
+    .actions button { margin-right:6px; }
+  </style>
+  <script>
+    async function loadPhones(){
+      const res = await fetch('/api/phones');
+      const data = await res.json();
+      const tbody = document.getElementById('phones-tbody');
+      tbody.innerHTML = '';
+      data.forEach(p => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${p.id}</td>
+          <td>${escapeHtml(p.model)}</td>
+          <td>₹${Number(p.base_cost).toFixed(2)}</td>
+          <td>${escapeHtml(p.condition_type || '')}</td>
+          <td>${p.stock}</td>
+          <td>${p.sold_b2b ? 'Yes' : 'No'}</td>
+          <td class="actions">
+            <button onclick="sellPhone(${p.id})">Sell One</button>
+            <button onclick="toggleB2B(${p.id}, ${p.sold_b2b})">${p.sold_b2b ? 'Mark Retail' : 'Mark B2B'}</button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function loadPastProducts(){
+      const res = await fetch('/api/past_products');
+      const data = await res.json();
+      const tbody = document.getElementById('past-tbody');
+      tbody.innerHTML = '';
+      data.forEach(p => {
+        const tr = document.createElement('tr');
+        const date = new Date(p.sold_out_date).toLocaleString();
+        tr.innerHTML = `
+          <td>${p.id}</td>
+          <td>${escapeHtml(p.model)}</td>
+          <td>₹${Number(p.base_cost).toFixed(2)}</td>
+          <td>${escapeHtml(p.condition_type || '')}</td>
+          <td>${date}</td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function addPhone(){
+      const model = document.getElementById('model').value.trim();
+      const base_cost = parseFloat(document.getElementById('base_cost').value);
+      const condition_type = document.getElementById('condition_type').value.trim();
+      const stock = parseInt(document.getElementById('stock').value) || 0;
+
+      if (!model) { alert('Model required'); return; }
+      if (isNaN(base_cost) || base_cost <= 0) { alert('Base cost must be > 0'); return; }
+      if (stock < 0) { alert('Stock cannot be negative'); return; }
+
+      const res = await fetch('/api/phones', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ model, base_cost, condition_type, stock })
+      });
+      const j = await res.json();
+      if (res.status === 201) {
+        alert(j.message);
+        document.getElementById('model').value = '';
+        document.getElementById('base_cost').value = '';
+        document.getElementById('condition_type').value = '';
+        document.getElementById('stock').value = '';
+        loadPhones();
+      } else {
+        alert(j.error || j.message || 'Error adding phone');
+      }
+    }
+
+    async function sellPhone(id){
+      const ok = confirm('Sell one unit?');
+      if (!ok) return;
+      const res = await fetch(`/api/phones/${id}/sell`, { method: 'PUT' });
+      const j = await res.json();
+      alert(j.message || j.error || 'Done');
+      loadPhones();
+      loadPastProducts();
+    }
+
+    async function toggleB2B(id, current){
+      const res = await fetch(`/api/phones/${id}/b2b`, {
+        method: 'PUT',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ sold_b2b: !current })
+      });
+      const j = await res.json();
+      alert(j.message || j.error || 'Done');
+      loadPhones();
+    }
+
+    function escapeHtml(str){
+      if (!str) return '';
+      return String(str).replace(/[&<>"']/g, function(m){ return ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m])});
+    }
+
+    window.onload = function(){
+      loadPhones();
+      loadPastProducts();
+    }
+  </script>
+</head>
+<body>
+  <header>
+    <h1>📱 Refurbished Phones Inventory</h1>
+    <div>
+      <a href="/logout">Logout</a>
+    </div>
+  </header>
+
+  <div class="card">
+    <h3>Add New Phone</h3>
+    <input id="model" placeholder="Model">
+    <input id="base_cost" placeholder="Base cost" type="number" step="0.01">
+    <input id="condition_type" placeholder="Condition (Like New / Good / Fair)">
+    <input id="stock" placeholder="Stock" type="number" value="1">
+    <button onclick="addPhone()">Add Phone</button>
+  </div>
+
+  <div class="card">
+    <h3>Current Phones</h3>
+    <table>
+      <thead><tr><th>ID</th><th>Model</th><th>Cost</th><th>Condition</th><th>Stock</th><th>B2B</th><th>Actions</th></tr></thead>
+      <tbody id="phones-tbody"></tbody>
+    </table>
+  </div>
+
+  <div class="card">
+    <h3>Past Products (Sold Out)</h3>
+    <table>
+      <thead><tr><th>ID</th><th>Model</th><th>Cost</th><th>Condition</th><th>Sold Out Date</th></tr></thead>
+      <tbody id="past-tbody"></tbody>
+    </table>
+  </div>
+</body>
+</html>
